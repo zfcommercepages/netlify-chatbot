@@ -1,5 +1,5 @@
 /**
- * POST /api/chat — same contract as storefront-chatbot app/main.py (Netlify Functions / Node 18+).
+ * POST /api/chat — JSON API for the storefront widget (Netlify Functions / Node 18+).
  */
 const MAX_MESSAGES = 24;
 const MAX_MESSAGE_CHARS = 12000;

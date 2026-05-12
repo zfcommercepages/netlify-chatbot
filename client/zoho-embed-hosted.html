@@ -1,0 +1,41 @@
+<!-- ============================================================
+  Zoho Commerce — Storefront chatbot (hosted on Netlify)
+
+  1. Deploy this storefront-chatbot-netlify repo to Netlify. The same site serves:
+       https://YOUR-SITE.netlify.app/widget/widget.css
+       https://YOUR-SITE.netlify.app/widget/widget.js
+       https://YOUR-SITE.netlify.app/api/chat
+  2. Edit WIDGET_ASSET_BASE below (no trailing slash) — usually same origin as CHAT_BACKEND_URL.
+  3. Paste this entire block before </body> in Settings → Themes → Edit Code.
+
+  The script runs on your Zoho store page, so Zoho Storefront API + cart stay same-origin.
+============================================================ -->
+
+<script>
+(function () {
+  var WIDGET_ASSET_BASE = 'https://your-site.netlify.app'; // Netlify site URL, no trailing slash
+
+  window.FF_CHATBOT_CONFIG = {
+    CHAT_BACKEND_URL: WIDGET_ASSET_BASE,
+    WIDGET_SECRET: '',
+    STORE_NAME: 'Your Store Name',
+    STORE_BASE: 'https://your-store.zohoecommerce.com',
+    STORE_DOMAIN: 'your-store.zohoecommerce.com',
+    STORE_VERTICALS:
+      'clothing and fashion, consumer electronics, furniture, and home decor',
+    STORE_POLICIES:
+      'Edit with your real policies: shipping, returns, support email/phone, coupons.'
+  };
+
+  var base = WIDGET_ASSET_BASE.replace(/\/$/, '');
+  var link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = base + '/widget/widget.css';
+  document.head.appendChild(link);
+
+  var s = document.createElement('script');
+  s.src = base + '/widget/widget.js';
+  s.defer = true;
+  document.body.appendChild(s);
+})();
+</script>

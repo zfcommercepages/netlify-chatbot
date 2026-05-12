@@ -1,13 +1,10 @@
-# Netlify: Node serverless /api/chat + static widget copied from the Python repo (git submodule `upstream`).
-# See README.md in this repository.
+# Netlify: Node serverless /api/chat + static widget from public/widget/ (committed in this repo).
+# See README.md
 
 [build]
   publish = "public"
   functions = "netlify/functions"
-  command = "git submodule update --init --recursive && mkdir -p public/widget && cp upstream/static/widget.css upstream/static/widget.js public/widget/"
-
-[build.environment]
-  GIT_SUBMODULE_STRATEGY = "recursive"
+  command = "true"
 
 [functions]
   node_bundler = "esbuild"

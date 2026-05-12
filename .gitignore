@@ -1,4 +1,2 @@
 .DS_Store
 .idea/
-# Built on Netlify; populated from submodule upstream/static/
-public/widget/

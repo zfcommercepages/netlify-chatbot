@@ -1,32 +1,22 @@
 # storefront-chatbot-netlify
 
-**Separate repo** from **`storefront-chatbot`**. Hosts on **Netlify**:
+Self-contained Netlify site: **widget static files**, **`POST /api/chat`**, and **`GET /health`**. No other repository or submodule is required.
 
-- Static **`/widget/widget.css`** and **`/widget/widget.js`** (copied at build time from the Python repo).
-- Serverless **`POST /api/chat`** and **`GET /health`** (Node functions — Netlify does not run Python).
+## What is deployed
 
-Canonical widget source lives in **`storefront-chatbot/static/`**. This repo should track that code via a **git submodule** named **`upstream`**.
+| Path | Source |
+|------|--------|
+| `/widget/widget.css`, `/widget/widget.js` | `public/widget/` in this repo |
+| `/api/chat` | `netlify/functions/chat.mjs` |
+| `/health` | `netlify/functions/health.mjs` |
 
-## One-time setup
+## Deploy on Netlify
 
-1. Create your **`storefront-chatbot`** repo on GitHub/GitLab and push the Python project.
+1. Push this repository to GitHub/GitLab/Bitbucket.
 
-2. Create this **`storefront-chatbot-netlify`** repo and clone it locally.
+2. In [Netlify](https://app.netlify.com/) → **Add new site** → import the repo. Build settings are read from `netlify.toml` (publish directory `public`, functions under `netlify/functions`).
 
-3. Add the submodule (replace URL):
-
-   ```bash
-   git submodule add https://github.com/YOUR_ORG/storefront-chatbot.git upstream
-   git submodule update --init --recursive
-   git add .gitmodules upstream
-   git commit -m "Add upstream submodule for widget static files"
-   git push
-   ```
-
-4. In **Netlify** → Site → **Build & deploy** → **Repository** → link this repo.  
-   Ensure **submodules** are fetched (this repo sets `GIT_SUBMODULE_STRATEGY=recursive` in `netlify.toml`).
-
-5. **Environment variables** (same names as the Python app):
+3. **Environment variables** (Site → Environment variables):
 
    | Variable | Required |
    |----------|----------|
@@ -35,25 +25,18 @@ Canonical widget source lives in **`storefront-chatbot/static/`**. This repo sho
    | `WIDGET_SECRET` | No |
    | `ANTHROPIC_MODEL` | No |
 
-6. Deploy. Set **`WIDGET_ASSET_BASE`** and **`CHAT_BACKEND_URL`** in Zoho to your Netlify site URL, e.g. `https://your-site.netlify.app`, using **`upstream` repo’s** `client/zoho-embed-hosted.html` as a template.
+   See `.env.example` for descriptions.
+
+4. Deploy. Use your site URL (no trailing slash) for both asset base and chat API in Zoho, e.g. `https://your-site.netlify.app`.
+
+## Zoho theme embed
+
+Copy **`client/zoho-embed-hosted.html`** into your Zoho Commerce theme (before `</body>`). Set `WIDGET_ASSET_BASE` and `CHAT_BACKEND_URL` (`FF_CHATBOT_CONFIG.CHAT_BACKEND_URL`) to the same Netlify origin.
 
 ## Updating the widget
 
-Change **`static/widget.css`** / **`static/widget.js`** in **`storefront-chatbot`**, push, then in **this** repo:
-
-```bash
-cd upstream && git pull origin main && cd ..
-git add upstream
-git commit -m "Bump upstream widget"
-git push
-```
-
-Netlify will rebuild and publish new static files.
-
-## Without submodule (not recommended)
-
-You can temporarily copy `widget.css` / `widget.js` into `public/widget/` and commit them, but you then have **two sources of truth**. Prefer the submodule flow above.
+Edit **`public/widget/widget.css`** and **`public/widget/widget.js`** in this repository, commit, and push. Netlify will publish the new files on the next build.
 
 ## Timeouts
 
-Netlify Functions have a **duration limit** (often ~10s on free tier). If Claude exceeds it, keep **Python** on Fly/Render for `/api/chat` and use Netlify only for static assets, or upgrade Netlify.
+Netlify Functions have a **duration limit** (often ~10s on the free tier). If Claude responses exceed it, upgrade the plan or host the chat API elsewhere and keep only static assets on Netlify.
