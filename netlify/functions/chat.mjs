@@ -1,9 +1,10 @@
 /**
- * POST /api/chat — JSON API for the storefront widget (Netlify Functions / Node 18+).
+ * POST /api/chat — forwards to the agent webhook (no direct Anthropic call).
  */
 const MAX_MESSAGES = 24;
 const MAX_MESSAGE_CHARS = 12000;
 const MAX_CONTEXT_CHARS = 32000;
+const MAX_USER_PROMPT_CHARS = 120000;
 
 function cors(origin) {
   const allowed = (process.env.ALLOWED_ORIGINS || "")
@@ -62,6 +63,63 @@ function sanitizeMessages(raw) {
   return out;
 }
 
+function formatTranscript(messages) {
+  return messages
+    .map((m) => (m.role === "user" ? "User" : "Assistant") + ": " + m.content)
+    .join("\n\n");
+}
+
+function buildAgentUserPrompt(system, messages) {
+  const transcript = formatTranscript(messages);
+  const combined =
+    "Instructions and store context:\n" + system + "\n\n---\n\nConversation:\n" + transcript;
+  return combined.length > MAX_USER_PROMPT_CHARS
+    ? combined.slice(0, MAX_USER_PROMPT_CHARS)
+    : combined;
+}
+
+function numEnv(name, fallback) {
+  const v = process.env[name];
+  if (v == null || v === "") return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function extractReplyFromAgent(data) {
+  if (data == null) return null;
+  if (typeof data === "string") return data.trim() || null;
+  if (typeof data !== "object") return null;
+
+  const direct =
+    data.reply ||
+    data.text ||
+    data.response ||
+    data.output ||
+    data.message ||
+    data.answer ||
+    data.content_text;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+  const d = data.data || {};
+  const r = data.result || {};
+  const p = data.payload || {};
+  const nested =
+    (typeof d.text === "string" && d.text) ||
+    (typeof d.reply === "string" && d.reply) ||
+    (typeof r.text === "string" && r.text) ||
+    (typeof r.reply === "string" && r.reply) ||
+    (typeof p.text === "string" && p.text) ||
+    (typeof p.reply === "string" && p.reply);
+  if (typeof nested === "string" && nested.trim()) return nested.trim();
+
+  const blocks = data.content;
+  if (Array.isArray(blocks) && blocks[0] && typeof blocks[0].text === "string") {
+    return blocks[0].text.trim() || null;
+  }
+
+  return null;
+}
+
 export default async (request) => {
   const origin = request.headers.get("origin") || "";
   const headers = cors(origin);
@@ -77,10 +135,10 @@ export default async (request) => {
     });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const agentUrl = (process.env.AGENT_WEBHOOK_URL || "").trim();
+  if (!agentUrl) {
     return new Response(
-      JSON.stringify({ error: "Server misconfiguration: missing ANTHROPIC_API_KEY" }),
+      JSON.stringify({ error: "Server misconfiguration: missing AGENT_WEBHOOK_URL" }),
       { status: 500, headers }
     );
   }
@@ -112,26 +170,55 @@ export default async (request) => {
   }
 
   const system = buildSystemPrompt(body.context);
-  const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
+  const userPrompt = buildAgentUserPrompt(system, messages);
+
+  const agentBody = {
+    type: "generate",
+    user_prompt: userPrompt,
+    sampling_params: {
+      temperature: numEnv("AGENT_TEMPERATURE", 0.3),
+      top_p: numEnv("AGENT_TOP_P", 0.9),
+      top_k: numEnv("AGENT_TOP_K", 15),
+      max_tokens: numEnv("AGENT_MAX_TOKENS", 768),
+    },
+    model: (process.env.AGENT_MODEL || "claude-sonnet-4-6").trim(),
+  };
+
+  const callbackEndpoint = (process.env.AGENT_CALLBACK_ENDPOINT || "").trim();
+  if (callbackEndpoint) {
+    agentBody.endpoint = callbackEndpoint;
+  }
+
+  const reqHeaders = {
+    Accept: "*/*",
+    "Content-Type": "application/json",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+  };
+
+  const extraHeadersRaw = (process.env.AGENT_EXTRA_HEADERS_JSON || "").trim();
+  if (extraHeadersRaw) {
+    try {
+      const extra = JSON.parse(extraHeadersRaw);
+      if (extra && typeof extra === "object" && !Array.isArray(extra)) {
+        for (const [k, v] of Object.entries(extra)) {
+          if (typeof k === "string" && k && typeof v === "string") reqHeaders[k] = v;
+        }
+      }
+    } catch {
+      /* ignore invalid JSON */
+    }
+  }
 
   let ar;
   try {
-    ar = await fetch("https://api.anthropic.com/v1/messages", {
+    ar = await fetch(agentUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 400,
-        system,
-        messages,
-      }),
+      headers: reqHeaders,
+      body: JSON.stringify(agentBody),
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: "Upstream AI unreachable", detail: String(e) }), {
+    return new Response(JSON.stringify({ error: "Agent webhook unreachable", detail: String(e) }), {
       status: 502,
       headers,
     });
@@ -141,7 +228,7 @@ export default async (request) => {
   if (!ar.ok) {
     return new Response(
       JSON.stringify({
-        error: "Upstream AI error",
+        error: "Agent webhook error",
         status: ar.status,
         snippet: text.slice(0, 500),
       }),
@@ -151,17 +238,20 @@ export default async (request) => {
 
   let data;
   try {
-    data = JSON.parse(text);
+    data = text ? JSON.parse(text) : null;
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid upstream response" }), {
+    const plain = text.trim();
+    if (plain) {
+      return new Response(JSON.stringify({ reply: plain }), { status: 200, headers });
+    }
+    return new Response(JSON.stringify({ error: "Invalid agent response (not JSON)" }), {
       status: 502,
       headers,
     });
   }
 
-  const blocks = data.content;
   const reply =
-    (Array.isArray(blocks) && blocks[0] && blocks[0].text) || "I'm not sure — try browsing the store!";
+    extractReplyFromAgent(data) || "I'm not sure — try browsing the store!";
 
   return new Response(JSON.stringify({ reply }), { status: 200, headers });
 };
