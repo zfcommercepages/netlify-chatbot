@@ -59,9 +59,44 @@
   document.body.appendChild(root);
 
   var cartId       = localStorage.getItem('ff_cart') || null;
-  var Q = {}, V = {}, cache = {}, history = [];
+  var Q = {}, V = {}, cache = {};
   var isOpen = false;
   var LIST_PRODUCTS_CAP = 30;
+
+  var HISTORY_KEY = 'ff_history';
+  var PENDING_RUN_KEY = 'ff_pending_run';
+  var MAX_HISTORY = 5;
+  var POLL_INTERVAL_MS = 10000;
+  var MAX_POLL_ERRORS = 5;
+  var REPLY_DISPLAY_CHARS = 100;
+
+  function loadHistory() {
+    try {
+      var s = localStorage.getItem(HISTORY_KEY);
+      if (!s) return [];
+      var arr = JSON.parse(s);
+      return Array.isArray(arr) ? arr.slice(-MAX_HISTORY) : [];
+    } catch (e) { return []; }
+  }
+  function saveHistory(arr) {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(-MAX_HISTORY))); } catch (e) {}
+  }
+  function loadPendingRun() {
+    try { var s = localStorage.getItem(PENDING_RUN_KEY); return s ? JSON.parse(s) : null; }
+    catch (e) { return null; }
+  }
+  function savePendingRun(o) {
+    try { localStorage.setItem(PENDING_RUN_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+  function clearPendingRun() {
+    try { localStorage.removeItem(PENDING_RUN_KEY); } catch (e) {}
+  }
+  function shortenForDisplay(s) {
+    var t = String(s == null ? '' : s);
+    return t.length > REPLY_DISPLAY_CHARS ? t.slice(0, REPLY_DISPLAY_CHARS) + '…' : t;
+  }
+
+  var conversationHistory = loadHistory();
 
   window.ffToggle = function () {
     isOpen = !isOpen;
@@ -105,8 +140,7 @@
     return (d && d.payload) || null;
   }
 
-  async function askClaude(text) {
-    history.push({ role: 'user', content: text });
+  async function askAgent(text) {
     var base = String(CHAT_BACKEND_URL || '').replace(/\/$/, '');
     if (!base) throw new Error('CHAT_BACKEND_URL is not set');
     var headers = { 'Content-Type': 'application/json' };
@@ -114,43 +148,60 @@
     var res = await fetch(base + '/api/chat', {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({
-        messages: history,
-        context: {
-          storeName: STORE_NAME,
-          storeBase: STORE_BASE,
-          verticals: STORE_VERTICALS,
-          policies: STORE_POLICIES,
-          productsContext: buildCtx()
-        }
-      })
+      body: JSON.stringify({ prompt: text, context: conversationHistory })
     });
     var raw = await res.text();
     var d = {};
     try { d = JSON.parse(raw); } catch (e) {}
     if (!res.ok) throw new Error((d && d.error) || ('Chat API ' + res.status));
-    var reply = (d && d.reply) || "I'm not sure — try browsing the store!";
-    history.push({ role: 'assistant', content: reply });
-    if (history.length > 20) history.splice(0, 2);
-    return reply;
+    if (!d || !d.poll_url) throw new Error('No poll_url returned from /api/chat');
+
+    savePendingRun({ run_id: d.run_id || '', poll_url: d.poll_url, user_prompt: text });
+    return await waitForRun(d.poll_url, text);
   }
 
-  function buildCtx() {
-    var prods = Object.values(cache);
-    if (!prods.length) return 'None yet.';
-    return prods.map(function (p) {
-      var price = getPrice(p), orig = getOrig(p);
-      var opts = {};
-      (p.variants || []).forEach(function (v) {
-        (v.options || []).forEach(function (o) {
-          if (!opts[o.name]) opts[o.name] = [];
-          if (opts[o.name].indexOf(o.value) < 0) opts[o.name].push(o.value);
-        });
-      });
-      var os = Object.keys(opts).map(function (k) { return k + ': ' + opts[k].join(', '); }).join(' | ');
-      var d  = (p.short_description || '').replace(/<[^>]*>/g, '').trim();
-      return '- ' + p.name + ' Rs.' + price + (orig > price ? ' (was Rs.' + orig + ')' : '') + (os ? ' | ' + os : '') + (d ? ' | ' + d : '');
-    }).join('\n');
+  function resolvePollUrl(pollUrl) {
+    if (/^https?:\/\//i.test(pollUrl)) return pollUrl;
+    var base = String(CHAT_BACKEND_URL || '').replace(/\/$/, '');
+    return base + (pollUrl.charAt(0) === '/' ? pollUrl : '/' + pollUrl);
+  }
+
+  async function waitForRun(pollUrl, userPrompt) {
+    var fullUrl = resolvePollUrl(pollUrl);
+    var pollHeaders = {};
+    if (WIDGET_SECRET) pollHeaders['X-Widget-Secret'] = WIDGET_SECRET;
+    var consecErrors = 0;
+    var output = '';
+    while (true) {
+      await new Promise(function (r) { setTimeout(r, POLL_INTERVAL_MS); });
+      try {
+        var r = await fetch(fullUrl, { headers: pollHeaders });
+        if (!r.ok) {
+          consecErrors++;
+          if (consecErrors >= MAX_POLL_ERRORS) throw new Error('Poll failed: ' + r.status);
+          continue;
+        }
+        consecErrors = 0;
+        var p = await r.json();
+        if (p && p.status === 'completed') {
+          output = String(p.output == null ? '' : p.output);
+          break;
+        }
+      } catch (e) {
+        consecErrors++;
+        if (consecErrors >= MAX_POLL_ERRORS) {
+          clearPendingRun();
+          throw e;
+        }
+      }
+    }
+    conversationHistory.push({ user_prompt: userPrompt, agent_response: output });
+    if (conversationHistory.length > MAX_HISTORY) {
+      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+    }
+    saveHistory(conversationHistory);
+    clearPendingRun();
+    return output;
   }
 
   function intent(text) {
@@ -481,7 +532,7 @@
     if (it === 'all_products') { await showAllProductsInChat(); return; }
     if (it === 'question') {
       addTyping();
-      try { var r1 = await askClaude(text); rmTyping(); addRow('bot', esc(r1)); chips(['Show me the product', 'List all categories', 'View cart', 'Ask another question']); }
+      try { var r1 = await askAgent(text); rmTyping(); addRow('bot', esc(shortenForDisplay(r1))); chips(['Show me the product', 'List all categories', 'View cart', 'Ask another question']); }
       catch (e) { rmTyping(); addRow('bot', 'Could not get an answer. Try rephrasing!'); }
       return;
     }
@@ -492,7 +543,7 @@
     rmTyping();
     if (!prods.length) {
       addTyping();
-      try { var r2 = await askClaude(text); rmTyping(); addRow('bot', esc(r2)); }
+      try { var r2 = await askAgent(text); rmTyping(); addRow('bot', esc(shortenForDisplay(r2))); }
       catch (e) { rmTyping(); addRow('bot', 'No results for "' + esc(text) + '". Try another keyword or browse categories.'); chips(['List all categories', 'Browse all products', 'Office chair']); }
       return;
     }
@@ -539,5 +590,22 @@
 
   addRow('bot', 'Welcome to <strong>' + STORE_NAME + '</strong>! Search for items, or say <strong>list all categories</strong>, <strong>list all collections</strong>, or <strong>browse all products</strong>.');
   chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'Wall clock', 'Dining table']);
+
+  (function resumePendingRun() {
+    var pending = loadPendingRun();
+    if (!pending || !pending.poll_url) return;
+    addRow('user', pending.user_prompt || '(previous question)');
+    addRow('bot', 'Resuming your previous request…');
+    addTyping();
+    waitForRun(pending.poll_url, pending.user_prompt || '').then(function (output) {
+      rmTyping();
+      addRow('bot', esc(shortenForDisplay(output)));
+      chips(['Ask another question', 'List all categories', 'View cart']);
+    }).catch(function () {
+      rmTyping();
+      clearPendingRun();
+      addRow('bot', 'Could not recover the previous request. Try asking again.');
+    });
+  })();
 
 })();

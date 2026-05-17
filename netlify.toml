@@ -16,6 +16,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/poll"
+  to = "/.netlify/functions/poll"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/health"
   to = "/.netlify/functions/health"
   status = 200

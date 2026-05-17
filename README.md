@@ -8,6 +8,7 @@ Self-contained Netlify site: **widget static files**, **`POST /api/chat`**, and 
 |------|--------|
 | `/widget/widget.css`, `/widget/widget.js` | `public/widget/` in this repo |
 | `/api/chat` | `netlify/functions/chat.mjs` |
+| `/api/poll` | `netlify/functions/poll.mjs` |
 | `/health` | `netlify/functions/health.mjs` |
 
 ## Deploy on Netlify
@@ -20,30 +21,34 @@ Self-contained Netlify site: **widget static files**, **`POST /api/chat`**, and 
 
    | Variable | Required |
    |----------|----------|
-   | `AGENT_WEBHOOK_URL` | Yes — full URL for `POST` with body `{ type, user_prompt, sampling_params, model, endpoint? }` |
-   | `ALLOWED_ORIGINS` | Yes (comma-separated Zoho storefront HTTPS origins) |
+   | `AGENT_WEBHOOK_URL` | Yes — full URL of the agent receive webhook |
+   | `ALLOWED_ORIGINS` | Yes — comma-separated Zoho storefront HTTPS origins |
    | `WIDGET_SECRET` | No |
-   | `AGENT_MODEL` | No (default `claude-sonnet-4-6`) |
-   | `AGENT_CALLBACK_ENDPOINT` | No — sets JSON field `endpoint` if your agent expects a callback URL |
-   | `AGENT_TEMPERATURE`, `AGENT_TOP_P`, `AGENT_TOP_K`, `AGENT_MAX_TOKENS` | No — override `sampling_params` |
-   | `AGENT_EXTRA_HEADERS_JSON` | No — JSON object of extra headers (strings only), e.g. `Origin` |
-
-   Chat no longer calls Anthropic directly; it forwards to `AGENT_WEBHOOK_URL`. The widget still receives `{ "reply": "..." }`; the function maps several common JSON shapes from the agent into `reply`
-
-   **Note:** Netlify runs in the public cloud. A private URL like `http://10.93.9.49:8000/...` is only reachable from the function if that host is routable from the internet (VPN/tunnel, or deploy the agent on a public host). For local testing, use `netlify dev` from a network that can reach the agent
 
    See `.env.example` for descriptions.
 
 4. Deploy. Use your site URL (no trailing slash) for both asset base and chat API in Zoho, e.g. `https://your-site.netlify.app`
 
+## How the chat flow works (async)
+
+1. The widget POSTs `{ prompt, context }` to `/api/chat`. `context` is a JSON array of up to 5 `{ user_prompt, agent_response }` pairs maintained by the widget in `localStorage` (key `ff_history`), since the agent is stateless.
+2. `chat.mjs` forwards the same body to `AGENT_WEBHOOK_URL`. The agent acknowledges immediately with `{ run_id, status:"pending", poll_url, stream_url, ... }`.
+3. `chat.mjs` returns `{ run_id, poll_url }` (HTTP 202) where `poll_url` points at the Netlify proxy: `/api/poll?p=<encoded agent path>`. The agent host's origin is never exposed to the browser.
+4. The widget stores the pending run in `localStorage` (key `ff_pending_run`) and polls `<CHAT_BACKEND_URL>/api/poll?p=...` **every 10 seconds**. Each call is forwarded server-side to the agent by `poll.mjs`, which validates that the target stays on `AGENT_WEBHOOK_URL`'s origin (SSRF guard).
+5. On completion the widget reads `output`, appends `{ user_prompt, agent_response }` to history, persists it, clears `ff_pending_run`, and renders the response in the chat (truncated to 100 chars for display; the full text is kept in `context` for the next turn).
+
+**Why the proxy?** The browser polls a Netlify URL (same origin as `/api/chat`), so no CORS headers are required on the agent host. This also keeps internal agent hosts (e.g. `http://10.93.9.49:8000`) hidden from end users.
+
+**Reachability note:** Netlify Functions run in the public cloud. A private URL like `http://10.93.9.49:8000/...` is only reachable from the function if that host is routable from the internet (VPN/tunnel, or deploy the agent on a public host). For local testing, use `netlify dev` from a network that can reach the agent.
+
 ## Zoho theme embed
 
-Copy **`client/zoho-embed-hosted.html`** into your Zoho Commerce theme (before `</body>`). Set `WIDGET_ASSET_BASE` and `CHAT_BACKEND_URL` (`FF_CHATBOT_CONFIG.CHAT_BACKEND_URL`) to the same Netlify origin
+Copy **`client/zoho-embed-hosted.html`** into your Zoho Commerce theme (before `</body>`). Set `WIDGET_ASSET_BASE` and `CHAT_BACKEND_URL` (`FF_CHATBOT_CONFIG.CHAT_BACKEND_URL`) to the same Netlify origin.
 
 ## Updating the widget
 
-Edit **`public/widget/widget.css`** and **`public/widget/widget.js`** in this repository, commit, and push. Netlify will publish the new files on the next build
+Edit **`public/widget/widget.css`** and **`public/widget/widget.js`** in this repository, commit, and push. Netlify will publish the new files on the next build.
 
 ## Timeouts
 
-Netlify Functions have a **duration limit** (often ~10s on the free tier). If Claude responses exceed it, upgrade the plan or host the chat API elsewhere and keep only static assets on Netlify
+Netlify Functions have a duration limit (often ~10s on the free tier). The trigger call only needs to wait for the agent's immediate async ack, so it stays well under that limit; long-running agent runs are handled entirely by browser-side polling and are not bound by the function timeout.
