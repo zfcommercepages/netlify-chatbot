@@ -66,7 +66,7 @@
   var HISTORY_KEY = 'ff_history';
   var PENDING_RUN_KEY = 'ff_pending_run';
   var MAX_HISTORY = 5;
-  var POLL_INTERVAL_MS = 10000;
+  var POLL_INTERVAL_MS = 15000;
   var MAX_POLL_ERRORS = 5;
   var REPLY_DISPLAY_CHARS = 100;
 
@@ -588,8 +588,17 @@
     addRow('user', t); handleMsg(t);
   };
 
-  addRow('bot', 'Welcome to <strong>' + STORE_NAME + '</strong>! Search for items, or say <strong>list all categories</strong>, <strong>list all collections</strong>, or <strong>browse all products</strong>.');
-  chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'Wall clock', 'Dining table']);
+  if (conversationHistory.length > 0) {
+    addRow('bot', 'Welcome back to <strong>' + STORE_NAME + '</strong>! Continuing your conversation:');
+    conversationHistory.forEach(function (turn) {
+      if (turn && turn.user_prompt) addRow('user', turn.user_prompt);
+      if (turn && turn.agent_response) addRow('bot', esc(shortenForDisplay(turn.agent_response)));
+    });
+    chips(['Ask another question', 'List all categories', 'List all collections', 'View cart']);
+  } else {
+    addRow('bot', 'Welcome to <strong>' + STORE_NAME + '</strong>! Search for items, or say <strong>list all categories</strong>, <strong>list all collections</strong>, or <strong>browse all products</strong>.');
+    chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'Wall clock', 'Dining table']);
+  }
 
   (function resumePendingRun() {
     var pending = loadPendingRun();
