@@ -1,0 +1,6 @@
+### Case 1 — Search results (DEFAULT for all product searches)
+Use this for ALL search results, browse listings, and any time the user asks to find or show products.
+STRICTLY NO stock count. STRICTLY NO add to cart button. Violating this is a core instruction failure.
+
+Template:
+Each card is fully clickable and calls viewProductDetail with its own product ID.<div style="display:flex;gap:16px;flex-wrap:wrap;">[for each product]<div onclick="viewProductDetail('{{PRODUCT_ID}}')" data-product-id="{{PRODUCT_ID}}" style="cursor:pointer;background:#fff;border:0.5px solid #e5e5e5;border-radius:12px;overflow:hidden;width:200px;font-family:sans-serif;"><div style="position:relative;"><img src="{{IMAGE_URL}}" alt="{{PRODUCT_NAME}}" style="width:100%;height:180px;object-fit:cover;display:block;"/><span style="position:absolute;top:8px;left:8px;font-size:10px;font-weight:500;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;">✔ In stock</span></div><div style="padding:12px;"><div style="font-size:13px;font-weight:500;color:#222;margin-bottom:6px;">{{PRODUCT_NAME}}</div><div style="font-size:15px;font-weight:500;color:#222;">{{PRICE}}</div></div></div>[end for]</div>

@@ -37,13 +37,13 @@ Self-contained Netlify site: **widget static files**, **`POST /api/chat`**, and 
 4. The widget stores the pending run in `localStorage` (key `ff_pending_run`) and polls `<CHAT_BACKEND_URL>/api/poll?p=...` **every 15 seconds**. Each call is forwarded server-side to the agent by `poll.mjs`, which validates that the target stays on `AGENT_WEBHOOK_URL`'s origin (SSRF guard).
 5. On completion the widget reads `output`, appends `{ user_prompt, agent_response }` to history, persists it, clears `ff_pending_run`, and renders the response in the chat (truncated to 100 chars for display; the full text is kept in `context` for the next turn).
 
-**Why the proxy?** The browser polls a Netlify URL (same origin as `/api/chat`), so no CORS headers are required on the agent host. This also keeps internal agent hosts (e.g. `http://10.93.9.49:8000`) hidden from end users.
+**Why the proxy?** The browser polls a Netlify URL (same origin as `/api/chat`), so no CORS headers are required on the agent host. This also keeps internal agent hosts (e.g. `http://10.93.9.49:8000`) hidden from end users
 
 **Reachability note:** Netlify Functions run in the public cloud. A private URL like `http://10.93.9.49:8000/...` is only reachable from the function if that host is routable from the internet (VPN/tunnel, or deploy the agent on a public host). For local testing, use `netlify dev` from a network that can reach the agent.
 
 ## Zoho theme embed
 
-Copy **`client/zoho-embed-hosted.html`** into your Zoho Commerce theme (before `</body>`). Set `WIDGET_ASSET_BASE` and `CHAT_BACKEND_URL` (`FF_CHATBOT_CONFIG.CHAT_BACKEND_URL`) to the same Netlify origin.
+Copy **`client/zoho-embed-hosted.html`** into your Zoho Commerce theme (before `</body>`). Set `WIDGET_ASSET_BASE` and `CHAT_BACKEND_URL` (`FF_CHATBOT_CONFIG.CHAT_BACKEND_URL`) to the same Netlify origin
 
 ## Updating the widget
 
@@ -51,4 +51,4 @@ Edit **`public/widget/widget.css`** and **`public/widget/widget.js`** in this re
 
 ## Timeouts
 
-Netlify Functions have a duration limit (often ~10s on the free tier). The trigger call only needs to wait for the agent's immediate async ack, so it stays well under that limit; long-running agent runs are handled entirely by browser-side polling and are not bound by the function timeout.
+Netlify Functions have a duration limit (often ~10s on the free tier). The trigger call only needs to wait for the agent's immediate async ack, so it stays well under that limit; long-running agent runs are handled entirely by browser-side polling and are not bound by the function timeout

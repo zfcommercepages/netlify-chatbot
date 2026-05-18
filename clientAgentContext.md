@@ -34,7 +34,7 @@ The response structure is
 2. You need to poll the poll url 10s after triggering the agent and check for the status of the agent run
 3. You can use the local storage to store the poll_url. Once the agent run is completed you can remove the poll_url from the local storage
 4. Get the agent response from the stream url and display it once the agent has completed the run.
-5. Display the agent reponse in the chat as agent reponse.. you can short the agnt response to 100 characters
+5. Display the agent reponse in the chat as agent reponse.
 6. As the agent cannot maintain context have a JSONArray with JSON object with two nodes.
 7. One node must contain the user prompt and the other node must contain the agent response. You can use this JSONArray to maintain the context of the conversation and pass it to the agent in the webhook payload for each subsequent user prompt. You can limit the size of this JSONArray to 5 entries to avoid exceeding token limits.
 8. Maintain the context in local storage
