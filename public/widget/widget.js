@@ -65,10 +65,10 @@
 
   var HISTORY_KEY = 'ff_history';
   var PENDING_RUN_KEY = 'ff_pending_run';
-  var MAX_HISTORY = 5;
+  var MAX_HISTORY = 10;
   var POLL_INTERVAL_MS = 15000;
   var MAX_POLL_ERRORS = 5;
-  var REPLY_DISPLAY_CHARS = 100;
+  var REPLY_DISPLAY_WORDS = 200;
 
   function loadHistory() {
     try {
@@ -81,6 +81,16 @@
   function saveHistory(arr) {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(-MAX_HISTORY))); } catch (e) {}
   }
+  function recordTurn(userPrompt, agentResponse) {
+    var u = String(userPrompt == null ? '' : userPrompt);
+    var a = String(agentResponse == null ? '' : agentResponse);
+    if (!u && !a) return;
+    conversationHistory.push({ user_prompt: u, agent_response: a });
+    if (conversationHistory.length > MAX_HISTORY) {
+      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+    }
+    saveHistory(conversationHistory);
+  }
   function loadPendingRun() {
     try { var s = localStorage.getItem(PENDING_RUN_KEY); return s ? JSON.parse(s) : null; }
     catch (e) { return null; }
@@ -92,8 +102,11 @@
     try { localStorage.removeItem(PENDING_RUN_KEY); } catch (e) {}
   }
   function shortenForDisplay(s) {
-    var t = String(s == null ? '' : s);
-    return t.length > REPLY_DISPLAY_CHARS ? t.slice(0, REPLY_DISPLAY_CHARS) + '…' : t;
+    var t = String(s == null ? '' : s).trim();
+    if (!t) return t;
+    var words = t.split(/\s+/);
+    if (words.length <= REPLY_DISPLAY_WORDS) return t;
+    return words.slice(0, REPLY_DISPLAY_WORDS).join(' ') + '…';
   }
 
   var conversationHistory = loadHistory();
@@ -195,11 +208,6 @@
         }
       }
     }
-    conversationHistory.push({ user_prompt: userPrompt, agent_response: output });
-    if (conversationHistory.length > MAX_HISTORY) {
-      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
-    }
-    saveHistory(conversationHistory);
     clearPendingRun();
     return output;
   }
@@ -272,13 +280,16 @@
       if (!flat.length) {
         addRow('bot', 'No categories are available from the store right now.');
         chips(['List all collections', 'Browse all products', 'View cart']);
-        return;
+        return 'No categories available.';
       }
       addRow('bot', '<strong>Categories</strong> (tap a link to open on the store):<br><br>' + categoryListHtml(flat));
       chips(['List all collections', 'Browse all products', 'View cart', 'Search in chat']);
+      var names = flat.slice(0, 5).map(function (c) { return c.name; }).join(', ');
+      return 'Showed ' + flat.length + ' categories: ' + names + (flat.length > 5 ? ', …' : '') + '.';
     } catch (e) {
       rmTyping();
       addRow('bot', 'Could not load categories. Please try again.');
+      return 'Could not load categories.';
     }
   }
 
@@ -291,7 +302,7 @@
       if (!cols.length) {
         addRow('bot', 'No collections are published on the store right now.');
         chips(['List all categories', 'Browse all products', 'View cart']);
-        return;
+        return 'No collections published.';
       }
       var lines = cols.map(function (c) {
         var id = String(c.id || '').replace(/'/g, '');
@@ -300,9 +311,12 @@
       }).join('<br>');
       addRow('bot', '<strong>Collections</strong> — tap a collection to load its products here:<br><br>' + lines);
       chips(['List all categories', 'Browse all products', 'View cart']);
+      var names = cols.slice(0, 5).map(function (c) { return c.name || 'Collection'; }).join(', ');
+      return 'Showed ' + cols.length + ' collections: ' + names + (cols.length > 5 ? ', …' : '') + '.';
     } catch (e) {
       rmTyping();
       addRow('bot', 'Could not load collections. Please try again.');
+      return 'Could not load collections.';
     }
   }
 
@@ -337,16 +351,19 @@
       if (!prods.length) {
         addRow('bot', 'No products returned for a broad browse. Try searching for something specific.');
         chips(['List all categories', 'List all collections', 'View cart']);
-        return;
+        return 'No products returned for a broad browse.';
       }
       var slice = prods.slice(0, LIST_PRODUCTS_CAP);
       slice.forEach(function (p) { cache[p.product_id] = p; });
       addRow('bot', 'Showing up to <strong>' + slice.length + '</strong> products from the catalog (first page). Tap a tile for details:');
       addTiles(slice);
       chips(['Ask about these products', 'List all categories', 'List all collections', 'View cart']);
+      var names = slice.slice(0, 5).map(function (p) { return p.name; }).join(', ');
+      return 'Showed ' + slice.length + ' products: ' + names + (slice.length > 5 ? ', …' : '') + '.';
     } catch (e) {
       rmTyping();
       addRow('bot', 'Could not load products. Please try again.');
+      return 'Could not load products.';
     }
   }
 
@@ -503,7 +520,7 @@
       var cart = await getCart(); rmTyping();
       if (!cart || !cart.items || !cart.items.length) {
         addRow('bot', 'Your cart is empty. What would you like to shop for?');
-        return;
+        return 'Cart is empty.';
       }
       var lines = cart.items.map(function (i) {
         return '- <strong>' + esc(i.name || 'Item') + '</strong> x' + i.quantity
@@ -516,7 +533,12 @@
         + '<strong>Subtotal: Rs.' + (cart.sub_total || 0).toLocaleString('en-IN') + '</strong><br><br>'
         + '<a href="' + href + '" target="_blank" rel="noopener" style="color:var(--ff-a);font-weight:600">Proceed to Checkout</a>'
       );
-    } catch (e) { rmTyping(); addRow('bot', 'Could not load cart. Please try again.'); }
+      return 'Cart has ' + cart.count + ' item' + (cart.count !== 1 ? 's' : '') + ', subtotal Rs.' + (cart.sub_total || 0).toLocaleString('en-IN') + '.';
+    } catch (e) {
+      rmTyping();
+      addRow('bot', 'Could not load cart. Please try again.');
+      return 'Could not load cart.';
+    }
   };
 
   async function handleMsg(text) {
@@ -524,33 +546,59 @@
     if (it === 'greeting') {
       addRow('bot', 'Hey! Welcome to <strong>' + STORE_NAME + '</strong>. Search, browse categories and collections, or ask a question.');
       chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'LED TV', 'Sofa', 'Kurti']);
+      recordTurn(text, 'Greeted customer and offered browse options.');
       return;
     }
-    if (it === 'cart') { await ffShowCart(); return; }
-    if (it === 'categories') { await showCategoriesInChat(); return; }
-    if (it === 'collections') { await showCollectionsInChat(); return; }
-    if (it === 'all_products') { await showAllProductsInChat(); return; }
+    if (it === 'cart') { recordTurn(text, await ffShowCart()); return; }
+    if (it === 'categories') { recordTurn(text, await showCategoriesInChat()); return; }
+    if (it === 'collections') { recordTurn(text, await showCollectionsInChat()); return; }
+    if (it === 'all_products') { recordTurn(text, await showAllProductsInChat()); return; }
     if (it === 'question') {
       addTyping();
-      try { var r1 = await askAgent(text); rmTyping(); addRow('bot', esc(shortenForDisplay(r1))); chips(['Show me the product', 'List all categories', 'View cart', 'Ask another question']); }
-      catch (e) { rmTyping(); addRow('bot', 'Could not get an answer. Try rephrasing!'); }
+      try {
+        var r1 = await askAgent(text);
+        rmTyping();
+        addRow('bot', esc(shortenForDisplay(r1)));
+        chips(['Show me the product', 'List all categories', 'View cart', 'Ask another question']);
+        recordTurn(text, r1);
+      } catch (e) {
+        rmTyping();
+        addRow('bot', 'Could not get an answer. Try rephrasing!');
+        recordTurn(text, 'Could not get an answer.');
+      }
       return;
     }
     addTyping();
     var prods = [];
     try { prods = await searchProducts(text); }
-    catch (e) { rmTyping(); addRow('bot', 'Could not reach the store API. Please try again.'); return; }
+    catch (e) {
+      rmTyping();
+      addRow('bot', 'Could not reach the store API. Please try again.');
+      recordTurn(text, 'Could not reach the store API.');
+      return;
+    }
     rmTyping();
     if (!prods.length) {
       addTyping();
-      try { var r2 = await askAgent(text); rmTyping(); addRow('bot', esc(shortenForDisplay(r2))); }
-      catch (e) { rmTyping(); addRow('bot', 'No results for "' + esc(text) + '". Try another keyword or browse categories.'); chips(['List all categories', 'Browse all products', 'Office chair']); }
+      try {
+        var r2 = await askAgent(text);
+        rmTyping();
+        addRow('bot', esc(shortenForDisplay(r2)));
+        recordTurn(text, r2);
+      } catch (e) {
+        rmTyping();
+        addRow('bot', 'No results for "' + esc(text) + '". Try another keyword or browse categories.');
+        chips(['List all categories', 'Browse all products', 'Office chair']);
+        recordTurn(text, 'No results for "' + text + '".');
+      }
       return;
     }
     prods.forEach(function (p) { cache[p.product_id] = p; });
     addRow('bot', 'Found <strong>' + prods.length + '</strong> result' + (prods.length > 1 ? 's' : '') + ' for "' + esc(text) + '" - tap a tile for details:');
     addTiles(prods);
     chips(['Ask about these products', 'List all collections', 'View cart', 'Search something else']);
+    var productNames = prods.slice(0, 5).map(function (p) { return p.name; }).join(', ');
+    recordTurn(text, 'Found ' + prods.length + ' result' + (prods.length > 1 ? 's' : '') + ' for "' + text + '": ' + productNames + (prods.length > 5 ? ', …' : '') + '.');
   }
 
   window.ffSend = function () {
@@ -574,7 +622,7 @@
 
   window.ffChip = function (t) {
     if (CHIP_ALIASES[t] === '__focus__') { document.getElementById('ff-inp').focus(); return; }
-    if (CHIP_ALIASES[t] === '__cart__') { ffShowCart(); return; }
+    if (CHIP_ALIASES[t] === '__cart__') { addRow('user', t); handleMsg(t); return; }
     if (CHIP_ALIASES[t] === '__categories__') { addRow('user', t); handleMsg('list all categories'); return; }
     if (CHIP_ALIASES[t] === '__collections__') { addRow('user', t); handleMsg('list all collections'); return; }
     if (CHIP_ALIASES[t] === '__all_products__') { addRow('user', t); handleMsg('browse all products'); return; }
@@ -610,6 +658,7 @@
       rmTyping();
       addRow('bot', esc(shortenForDisplay(output)));
       chips(['Ask another question', 'List all categories', 'View cart']);
+      recordTurn(pending.user_prompt || '', output);
     }).catch(function () {
       rmTyping();
       clearPendingRun();
