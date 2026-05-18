@@ -204,3 +204,16 @@
   font-family: var(--ff-ui); opacity: 0; transition: all .3s; pointer-events: none; white-space: nowrap; z-index: 10;
 }
 #ff-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Agent HTML responses (product cards, etc.) */
+#ff-panel .ff-bbl .ff-agent-html {
+  max-width: 100%;
+  overflow-x: auto;
+}
+#ff-panel .ff-bbl .ff-agent-html img {
+  max-width: 100%;
+  height: auto;
+}
+#ff-panel .ff-bbl .ff-agent-html [style*="display:flex"] {
+  max-width: 100%;
+}

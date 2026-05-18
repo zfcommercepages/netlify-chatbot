@@ -1,3 +1,4 @@
+
 (function () {
   var C = typeof window !== 'undefined' ? window.FF_CHATBOT_CONFIG : null;
   if (!C || typeof C !== 'object') {
@@ -68,7 +69,6 @@
   var MAX_HISTORY = 5;
   var POLL_INTERVAL_MS = 15000;
   var MAX_POLL_ERRORS = 5;
-  var REPLY_DISPLAY_CHARS = 100;
 
   function loadHistory() {
     try {
@@ -91,9 +91,22 @@
   function clearPendingRun() {
     try { localStorage.removeItem(PENDING_RUN_KEY); } catch (e) {}
   }
-  function shortenForDisplay(s) {
-    var t = String(s == null ? '' : s);
-    return t.length > REPLY_DISPLAY_CHARS ? t.slice(0, REPLY_DISPLAY_CHARS) + '…' : t;
+
+  function formatAgentMessage(llmResponse) {
+    var t = String(llmResponse == null ? '' : llmResponse);
+    if (!t) return '';
+    if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+      var rawHtml = marked.parse(t);
+      var cleanHtml = DOMPurify.sanitize(rawHtml, {
+        ADD_ATTR: ['data-product-id', 'style'],
+      });
+      return '<div class="ff-agent-html">' + cleanHtml + '</div>';
+    }
+    return esc(t).replace(/\n/g, '<br>');
+  }
+
+  function addAgentRow(content) {
+    addRow('bot', formatAgentMessage(content));
   }
 
   var conversationHistory = loadHistory();
@@ -526,13 +539,12 @@
       chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'LED TV', 'Sofa', 'Kurti']);
       return;
     }
-    if (it === 'cart') { await ffShowCart(); return; }
     if (it === 'categories') { await showCategoriesInChat(); return; }
     if (it === 'collections') { await showCollectionsInChat(); return; }
     if (it === 'all_products') { await showAllProductsInChat(); return; }
     if (it === 'question') {
       addTyping();
-      try { var r1 = await askAgent(text); rmTyping(); addRow('bot', esc(shortenForDisplay(r1))); chips(['Show me the product', 'List all categories', 'View cart', 'Ask another question']); }
+      try { var r1 = await askAgent(text); rmTyping(); addAgentRow(r1); chips(['Show me the product', 'List all categories', 'View cart', 'Ask another question']); }
       catch (e) { rmTyping(); addRow('bot', 'Could not get an answer. Try rephrasing!'); }
       return;
     }
@@ -543,7 +555,7 @@
     rmTyping();
     if (!prods.length) {
       addTyping();
-      try { var r2 = await askAgent(text); rmTyping(); addRow('bot', esc(shortenForDisplay(r2))); }
+      try { var r2 = await askAgent(text); rmTyping(); addAgentRow(r2); }
       catch (e) { rmTyping(); addRow('bot', 'No results for "' + esc(text) + '". Try another keyword or browse categories.'); chips(['List all categories', 'Browse all products', 'Office chair']); }
       return;
     }
@@ -588,11 +600,32 @@
     addRow('user', t); handleMsg(t);
   };
 
+  window.viewProductDetail = function (productId) {
+    productId = String(productId || '').trim();
+    if (!productId) return;
+    if (cache[productId]) {
+      addRow('bot', 'Here\'s <strong>' + esc(cache[productId].name) + '</strong>:');
+      ffExpand(productId);
+      return;
+    }
+    var prompt = 'Show me full details for product ID: ' + productId;
+    addRow('user', prompt);
+    addTyping();
+    askAgent(prompt).then(function (output) {
+      rmTyping();
+      addAgentRow(output);
+      chips(['Ask another question', 'View cart']);
+    }).catch(function () {
+      rmTyping();
+      addRow('bot', 'Could not load product details. Please try again.');
+    });
+  };
+
   if (conversationHistory.length > 0) {
     addRow('bot', 'Welcome back to <strong>' + STORE_NAME + '</strong>! Continuing your conversation:');
     conversationHistory.forEach(function (turn) {
       if (turn && turn.user_prompt) addRow('user', turn.user_prompt);
-      if (turn && turn.agent_response) addRow('bot', esc(shortenForDisplay(turn.agent_response)));
+      if (turn && turn.agent_response) addAgentRow(turn.agent_response);
     });
     chips(['Ask another question', 'List all categories', 'List all collections', 'View cart']);
   } else {
@@ -608,7 +641,7 @@
     addTyping();
     waitForRun(pending.poll_url, pending.user_prompt || '').then(function (output) {
       rmTyping();
-      addRow('bot', esc(shortenForDisplay(output)));
+      addAgentRow(output);
       chips(['Ask another question', 'List all categories', 'View cart']);
     }).catch(function () {
       rmTyping();
