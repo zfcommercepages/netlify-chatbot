@@ -90,6 +90,21 @@
 }
 #ff-panel .ff-row.bot  .ff-bbl { background: var(--ff-s2); border: 1px solid var(--ff-b); border-bottom-left-radius: 3px; }
 #ff-panel .ff-row.user .ff-bbl { background: var(--ff-a); color: #1a1200; font-weight: 500; border-bottom-right-radius: 3px; }
+
+#ff-panel .ff-bbl .ff-h1 { font-family: var(--ff-serif); font-size: 16px; font-weight: 700; color: var(--ff-a2); margin: 6px 0 4px; line-height: 1.25; }
+#ff-panel .ff-bbl .ff-h2 { font-family: var(--ff-serif); font-size: 15px; font-weight: 700; color: var(--ff-a2); margin: 6px 0 3px; line-height: 1.25; }
+#ff-panel .ff-bbl .ff-h3 { font-family: var(--ff-ui);    font-size: 13px; font-weight: 700; color: var(--ff-tx); margin: 5px 0 2px; line-height: 1.3; }
+#ff-panel .ff-bbl .ff-p  { margin: 0 0 6px; }
+#ff-panel .ff-bbl .ff-p:last-child { margin-bottom: 0; }
+#ff-panel .ff-bbl .ff-ul, #ff-panel .ff-bbl .ff-ol { padding-left: 18px; margin: 4px 0 6px; }
+#ff-panel .ff-bbl .ff-ul li, #ff-panel .ff-bbl .ff-ol li { margin: 1px 0; }
+#ff-panel .ff-bbl .ff-ic { background: var(--ff-s3); padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--ff-a); }
+#ff-panel .ff-bbl .ff-pre { background: var(--ff-s); border: 1px solid var(--ff-b); border-radius: 6px; padding: 7px 10px; margin: 6px 0; overflow-x: auto; }
+#ff-panel .ff-bbl .ff-pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--ff-tx); white-space: pre; }
+#ff-panel .ff-bbl a       { color: var(--ff-a); text-decoration: underline; }
+#ff-panel .ff-bbl a:hover { color: var(--ff-a2); }
+#ff-panel .ff-bbl em      { font-style: italic; }
+#ff-panel .ff-bbl strong  { font-weight: 700; }
 #ff-panel .ff-typing { display: flex; gap: 4px; padding: 8px 12px; }
 #ff-panel .ff-typing span {
   width: 6px; height: 6px; background: var(--ff-a); border-radius: 50%; animation: ffbo 1.2s infinite ease-in-out;

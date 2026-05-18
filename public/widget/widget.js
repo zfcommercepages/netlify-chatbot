@@ -109,6 +109,70 @@
     return words.slice(0, REPLY_DISPLAY_WORDS).join(' ') + '…';
   }
 
+  function mdToHtml(md) {
+    if (!md) return '';
+    var s = String(md)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    s = s.replace(/```([\s\S]*?)```/g, function (_, code) {
+      return '<pre class="ff-pre"><code>' + code.replace(/^\n+|\n+$/g, '') + '</code></pre>';
+    });
+
+    s = s.replace(/`([^`\n]+)`/g, '<code class="ff-ic">$1</code>');
+
+    s = s
+      .replace(/^### +(.*)$/gm, '<h3 class="ff-h3">$1</h3>')
+      .replace(/^## +(.*)$/gm,  '<h2 class="ff-h2">$1</h2>')
+      .replace(/^# +(.*)$/gm,   '<h1 class="ff-h1">$1</h1>');
+
+    s = s.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
+
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_, text, url) {
+      var safe = /^(https?:|mailto:)/i.test(url) ? url : '#';
+      return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
+    });
+
+    var lines = s.split('\n');
+    var out = [];
+    var inUl = false, inOl = false;
+    function closeLists() {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (inOl) { out.push('</ol>'); inOl = false; }
+    }
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      var um = /^[-*] +(.*)$/.exec(ln);
+      var om = /^\d+\. +(.*)$/.exec(ln);
+      if (um) {
+        if (inOl) { out.push('</ol>'); inOl = false; }
+        if (!inUl) { out.push('<ul class="ff-ul">'); inUl = true; }
+        out.push('<li>' + um[1] + '</li>');
+      } else if (om) {
+        if (inUl) { out.push('</ul>'); inUl = false; }
+        if (!inOl) { out.push('<ol class="ff-ol">'); inOl = true; }
+        out.push('<li>' + om[1] + '</li>');
+      } else {
+        closeLists();
+        out.push(ln);
+      }
+    }
+    closeLists();
+    s = out.join('\n');
+
+    s = s.split(/\n{2,}/).map(function (block) {
+      var t = block.trim();
+      if (!t) return '';
+      if (/^<(h[1-6]|ul|ol|pre|blockquote|p|div)/i.test(t)) return t;
+      return '<p class="ff-p">' + t.replace(/\n/g, '<br>') + '</p>';
+    }).filter(Boolean).join('');
+
+    return s;
+  }
+
   var conversationHistory = loadHistory();
 
   window.ffToggle = function () {
@@ -210,31 +274,6 @@
     }
     clearPendingRun();
     return output;
-  }
-
-  function intent(text) {
-    var l = text.toLowerCase().trim();
-    if (/^(hi|hello|hey|namaste|sup|yo)\b/.test(l)) return 'greeting';
-    if (/\b(cart|bag|my order|checkout)\b/.test(l)) return 'cart';
-
-    var wantsCats =
-      /\b(categor(y|ies)|department(s)?)\b/.test(l) &&
-      /\b(list|show|browse|view|see|display|what|all|every|print|give)\b/.test(l);
-    var wantsCols =
-      /\b(collection(s)?|lookbook|curated)\b/.test(l) &&
-      /\b(list|show|browse|view|see|display|what|all|every|print|give)\b/.test(l);
-    if (wantsCols && !wantsCats) return 'collections';
-    if (wantsCats && !wantsCols) return 'categories';
-    if (wantsCats && wantsCols) return 'categories'; // default to categories; user can ask again for collections
-
-    if (
-      /\b(list|show|browse|view)\s+all\s+(products|items)\b/.test(l) ||
-      /\b(all|full|entire)\s+(product\s+)?(catalog(ue)?|inventory|range)\b/.test(l) ||
-      /\bbrowse\s+all\s+products\b/.test(l)
-    ) return 'all_products';
-
-    if (/[?]|^(what|how|does|do|is|are|can|tell|which|why|where|when|explain|describe|material|fabric|care|wash|return|ship|deliver|discount|coupon|price|cost|fit|style|recommend|warranty|assembly|voltage|size|dimension)/i.test(text)) return 'question';
-    return text.trim().split(/\s+/).length > 4 ? 'question' : 'search';
   }
 
   function esc(s) {
@@ -542,63 +581,18 @@
   };
 
   async function handleMsg(text) {
-    var it = intent(text);
-    if (it === 'greeting') {
-      addRow('bot', 'Hey! Welcome to <strong>' + STORE_NAME + '</strong>. Search, browse categories and collections, or ask a question.');
-      chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'LED TV', 'Sofa', 'Kurti']);
-      recordTurn(text, 'Greeted customer and offered browse options.');
-      return;
-    }
-    if (it === 'cart') { recordTurn(text, await ffShowCart()); return; }
-    if (it === 'categories') { recordTurn(text, await showCategoriesInChat()); return; }
-    if (it === 'collections') { recordTurn(text, await showCollectionsInChat()); return; }
-    if (it === 'all_products') { recordTurn(text, await showAllProductsInChat()); return; }
-    if (it === 'question') {
-      addTyping();
-      try {
-        var r1 = await askAgent(text);
-        rmTyping();
-        addRow('bot', esc(shortenForDisplay(r1)));
-        chips(['Show me the product', 'List all categories', 'View cart', 'Ask another question']);
-        recordTurn(text, r1);
-      } catch (e) {
-        rmTyping();
-        addRow('bot', 'Could not get an answer. Try rephrasing!');
-        recordTurn(text, 'Could not get an answer.');
-      }
-      return;
-    }
     addTyping();
-    var prods = [];
-    try { prods = await searchProducts(text); }
-    catch (e) {
+    try {
+      var reply = await askAgent(text);
       rmTyping();
-      addRow('bot', 'Could not reach the store API. Please try again.');
-      recordTurn(text, 'Could not reach the store API.');
-      return;
+      addRow('bot', mdToHtml(shortenForDisplay(reply)));
+      chips(['Ask another question']);
+      recordTurn(text, reply);
+    } catch (e) {
+      rmTyping();
+      addRow('bot', 'Could not get an answer. Try rephrasing!');
+      recordTurn(text, 'Could not get an answer.');
     }
-    rmTyping();
-    if (!prods.length) {
-      addTyping();
-      try {
-        var r2 = await askAgent(text);
-        rmTyping();
-        addRow('bot', esc(shortenForDisplay(r2)));
-        recordTurn(text, r2);
-      } catch (e) {
-        rmTyping();
-        addRow('bot', 'No results for "' + esc(text) + '". Try another keyword or browse categories.');
-        chips(['List all categories', 'Browse all products', 'Office chair']);
-        recordTurn(text, 'No results for "' + text + '".');
-      }
-      return;
-    }
-    prods.forEach(function (p) { cache[p.product_id] = p; });
-    addRow('bot', 'Found <strong>' + prods.length + '</strong> result' + (prods.length > 1 ? 's' : '') + ' for "' + esc(text) + '" - tap a tile for details:');
-    addTiles(prods);
-    chips(['Ask about these products', 'List all collections', 'View cart', 'Search something else']);
-    var productNames = prods.slice(0, 5).map(function (p) { return p.name; }).join(', ');
-    recordTurn(text, 'Found ' + prods.length + ' result' + (prods.length > 1 ? 's' : '') + ' for "' + text + '": ' + productNames + (prods.length > 5 ? ', …' : '') + '.');
   }
 
   window.ffSend = function () {
@@ -610,39 +604,25 @@
   window.ffOnKey   = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ffSend(); } };
   window.ffResize  = function (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 80) + 'px'; };
 
-  var CHIP_ALIASES = {
-    'Search in chat': '__focus__',
-    'Search something else': '__focus__',
-    'Ask another question': '__focus__',
-    'View cart': '__cart__',
-    'List all categories': '__categories__',
-    'List all collections': '__collections__',
-    'Browse all products': '__all_products__'
+  var FOCUS_CHIPS = {
+    'Search in chat': true,
+    'Search something else': true,
+    'Ask another question': true
   };
 
   window.ffChip = function (t) {
-    if (CHIP_ALIASES[t] === '__focus__') { document.getElementById('ff-inp').focus(); return; }
-    if (CHIP_ALIASES[t] === '__cart__') { addRow('user', t); handleMsg(t); return; }
-    if (CHIP_ALIASES[t] === '__categories__') { addRow('user', t); handleMsg('list all categories'); return; }
-    if (CHIP_ALIASES[t] === '__collections__') { addRow('user', t); handleMsg('list all collections'); return; }
-    if (CHIP_ALIASES[t] === '__all_products__') { addRow('user', t); handleMsg('browse all products'); return; }
-    if (t === 'Ask about these products') { addRow('bot', 'Ask me anything — materials, electronics specs, furniture size, care, or styling.'); document.getElementById('ff-inp').focus(); return; }
-    if (t === 'Show me the product') {
-      var vals = Object.values(cache), last = vals[vals.length - 1];
-      if (last) { addRow('bot', 'Here\'s <strong>' + esc(last.name) + '</strong>:'); ffExpand(last.product_id); }
-      else addRow('bot', 'Search or browse products first, then try again.');
-      return;
-    }
-    addRow('user', t); handleMsg(t);
+    if (FOCUS_CHIPS[t]) { document.getElementById('ff-inp').focus(); return; }
+    addRow('user', t);
+    handleMsg(t);
   };
 
   if (conversationHistory.length > 0) {
     addRow('bot', 'Welcome back to <strong>' + STORE_NAME + '</strong>! Continuing your conversation:');
     conversationHistory.forEach(function (turn) {
       if (turn && turn.user_prompt) addRow('user', turn.user_prompt);
-      if (turn && turn.agent_response) addRow('bot', esc(shortenForDisplay(turn.agent_response)));
+      if (turn && turn.agent_response) addRow('bot', mdToHtml(shortenForDisplay(turn.agent_response)));
     });
-    chips(['Ask another question', 'List all categories', 'List all collections', 'View cart']);
+    chips(['Ask another question']);
   } else {
     addRow('bot', 'Welcome to <strong>' + STORE_NAME + '</strong>! Search for items, or say <strong>list all categories</strong>, <strong>list all collections</strong>, or <strong>browse all products</strong>.');
     chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'Wall clock', 'Dining table']);
@@ -656,8 +636,8 @@
     addTyping();
     waitForRun(pending.poll_url, pending.user_prompt || '').then(function (output) {
       rmTyping();
-      addRow('bot', esc(shortenForDisplay(output)));
-      chips(['Ask another question', 'List all categories', 'View cart']);
+      addRow('bot', mdToHtml(shortenForDisplay(output)));
+      chips(['Ask another question']);
       recordTurn(pending.user_prompt || '', output);
     }).catch(function () {
       rmTyping();
