@@ -60,6 +60,34 @@
   document.body.appendChild(root);
 
   var cartId       = localStorage.getItem('ff_cart') || null;
+
+  function getZcidFromCookie() {
+    var m = document.cookie.match(/(?:^|;\s*)zcid=([^;]*)/);
+    return m ? decodeURIComponent(m[1].trim()) : '';
+  }
+
+  function syncCartIdFromCookie() {
+    var zcid = getZcidFromCookie();
+    if (zcid) {
+      cartId = zcid;
+      localStorage.setItem('ff_cart', zcid);
+    }
+    return zcid || cartId || '';
+  }
+
+  function promptHasCartWord(text) {
+    return /\bcart\b/i.test(String(text == null ? '' : text));
+  }
+
+  function agentPromptWithCartId(text) {
+    if (!promptHasCartWord(text)) return text;
+    var zcid = syncCartIdFromCookie();
+    if (!zcid) return text;
+    return text + '\n\n[cartId: ' + zcid + ']';
+  }
+
+  syncCartIdFromCookie();
+
   var Q = {}, V = {}, cache = {};
   var isOpen = false;
   var LIST_PRODUCTS_CAP = 30;
@@ -67,7 +95,7 @@
   var HISTORY_KEY = 'ff_history';
   var PENDING_RUN_KEY = 'ff_pending_run';
   var MAX_HISTORY = 5;
-  var POLL_INTERVAL_MS = 15000;
+  var POLL_INTERVAL_MS = 3000;
   var MAX_POLL_ERRORS = 5;
 
   function loadHistory() {
@@ -98,7 +126,7 @@
     if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
       var rawHtml = marked.parse(t);
       var cleanHtml = DOMPurify.sanitize(rawHtml, {
-        ADD_ATTR: ['data-product-id', 'style'],
+        ADD_ATTR: ['data-product-id', 'style', 'onclick'],
       });
       return '<div class="ff-agent-html">' + cleanHtml + '</div>';
     }
@@ -156,12 +184,13 @@
   async function askAgent(text) {
     var base = String(CHAT_BACKEND_URL || '').replace(/\/$/, '');
     if (!base) throw new Error('CHAT_BACKEND_URL is not set');
+    var promptForAgent = agentPromptWithCartId(text);
     var headers = { 'Content-Type': 'application/json' };
     if (WIDGET_SECRET) headers['X-Widget-Secret'] = WIDGET_SECRET;
     var res = await fetch(base + '/api/chat', {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({ prompt: text, context: conversationHistory })
+      body: JSON.stringify({ prompt: promptForAgent, context: conversationHistory })
     });
     var raw = await res.text();
     var d = {};
