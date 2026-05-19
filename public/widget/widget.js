@@ -143,8 +143,52 @@
       if (inUl) { out.push('</ul>'); inUl = false; }
       if (inOl) { out.push('</ol>'); inOl = false; }
     }
+    function isTableRow(x) { return /^\s*\|.*\|\s*$/.test(x); }
+    function isTableSep(x) { return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(x); }
+    function splitTableRow(x) {
+      var t = x.trim();
+      if (t.charAt(0) === '|') t = t.slice(1);
+      if (t.charAt(t.length - 1) === '|') t = t.slice(0, -1);
+      return t.split('|').map(function (c) { return c.trim(); });
+    }
+    function parseAligns(sep) {
+      return splitTableRow(sep).map(function (c) {
+        var l = c.charAt(0) === ':';
+        var r = c.charAt(c.length - 1) === ':';
+        if (l && r) return 'center';
+        if (r) return 'right';
+        if (l) return 'left';
+        return '';
+      });
+    }
     for (var i = 0; i < lines.length; i++) {
       var ln = lines[i];
+      if (isTableRow(ln) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        closeLists();
+        var aligns = parseAligns(lines[i + 1]);
+        var headers = splitTableRow(ln);
+        var tbl = ['<table class="ff-tbl"><thead><tr>'];
+        for (var h = 0; h < headers.length; h++) {
+          var alH = aligns[h] ? ' style="text-align:' + aligns[h] + '"' : '';
+          tbl.push('<th' + alH + '>' + headers[h] + '</th>');
+        }
+        tbl.push('</tr></thead><tbody>');
+        i += 2;
+        while (i < lines.length && isTableRow(lines[i])) {
+          var cells = splitTableRow(lines[i]);
+          tbl.push('<tr>');
+          for (var c = 0; c < cells.length; c++) {
+            var alC = aligns[c] ? ' style="text-align:' + aligns[c] + '"' : '';
+            tbl.push('<td' + alC + '>' + cells[c] + '</td>');
+          }
+          tbl.push('</tr>');
+          i++;
+        }
+        tbl.push('</tbody></table>');
+        out.push(tbl.join(''));
+        i--;
+        continue;
+      }
       var um = /^[-*] +(.*)$/.exec(ln);
       var om = /^\d+\. +(.*)$/.exec(ln);
       if (um) {
@@ -166,7 +210,7 @@
     s = s.split(/\n{2,}/).map(function (block) {
       var t = block.trim();
       if (!t) return '';
-      if (/^<(h[1-6]|ul|ol|pre|blockquote|p|div)/i.test(t)) return t;
+      if (/^<(h[1-6]|ul|ol|pre|blockquote|p|div|table)/i.test(t)) return t;
       return '<p class="ff-p">' + t.replace(/\n/g, '<br>') + '</p>';
     }).filter(Boolean).join('');
 
