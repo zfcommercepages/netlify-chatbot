@@ -68,7 +68,6 @@
   var MAX_HISTORY = 10;
   var POLL_INTERVAL_MS = 15000;
   var MAX_POLL_ERRORS = 5;
-  var REPLY_DISPLAY_WORDS = 200;
 
   function loadHistory() {
     try {
@@ -101,120 +100,8 @@
   function clearPendingRun() {
     try { localStorage.removeItem(PENDING_RUN_KEY); } catch (e) {}
   }
-  function shortenForDisplay(s) {
-    var t = String(s == null ? '' : s).trim();
-    if (!t) return t;
-    var words = t.split(/\s+/);
-    if (words.length <= REPLY_DISPLAY_WORDS) return t;
-    return words.slice(0, REPLY_DISPLAY_WORDS).join(' ') + '…';
-  }
-
-  function mdToHtml(md) {
-    if (!md) return '';
-    var s = String(md)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-
-    s = s.replace(/```([\s\S]*?)```/g, function (_, code) {
-      return '<pre class="ff-pre"><code>' + code.replace(/^\n+|\n+$/g, '') + '</code></pre>';
-    });
-
-    s = s.replace(/`([^`\n]+)`/g, '<code class="ff-ic">$1</code>');
-
-    s = s
-      .replace(/^### +(.*)$/gm, '<h3 class="ff-h3">$1</h3>')
-      .replace(/^## +(.*)$/gm,  '<h2 class="ff-h2">$1</h2>')
-      .replace(/^# +(.*)$/gm,   '<h1 class="ff-h1">$1</h1>');
-
-    s = s.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
-    s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
-
-    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_, text, url) {
-      var safe = /^(https?:|mailto:)/i.test(url) ? url : '#';
-      return '<a href="' + safe + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
-    });
-
-    var lines = s.split('\n');
-    var out = [];
-    var inUl = false, inOl = false;
-    function closeLists() {
-      if (inUl) { out.push('</ul>'); inUl = false; }
-      if (inOl) { out.push('</ol>'); inOl = false; }
-    }
-    function isTableRow(x) { return /^\s*\|.*\|\s*$/.test(x); }
-    function isTableSep(x) { return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(x); }
-    function splitTableRow(x) {
-      var t = x.trim();
-      if (t.charAt(0) === '|') t = t.slice(1);
-      if (t.charAt(t.length - 1) === '|') t = t.slice(0, -1);
-      return t.split('|').map(function (c) { return c.trim(); });
-    }
-    function parseAligns(sep) {
-      return splitTableRow(sep).map(function (c) {
-        var l = c.charAt(0) === ':';
-        var r = c.charAt(c.length - 1) === ':';
-        if (l && r) return 'center';
-        if (r) return 'right';
-        if (l) return 'left';
-        return '';
-      });
-    }
-    for (var i = 0; i < lines.length; i++) {
-      var ln = lines[i];
-      if (isTableRow(ln) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
-        closeLists();
-        var aligns = parseAligns(lines[i + 1]);
-        var headers = splitTableRow(ln);
-        var tbl = ['<table class="ff-tbl"><thead><tr>'];
-        for (var h = 0; h < headers.length; h++) {
-          var alH = aligns[h] ? ' style="text-align:' + aligns[h] + '"' : '';
-          tbl.push('<th' + alH + '>' + headers[h] + '</th>');
-        }
-        tbl.push('</tr></thead><tbody>');
-        i += 2;
-        while (i < lines.length && isTableRow(lines[i])) {
-          var cells = splitTableRow(lines[i]);
-          tbl.push('<tr>');
-          for (var c = 0; c < cells.length; c++) {
-            var alC = aligns[c] ? ' style="text-align:' + aligns[c] + '"' : '';
-            tbl.push('<td' + alC + '>' + cells[c] + '</td>');
-          }
-          tbl.push('</tr>');
-          i++;
-        }
-        tbl.push('</tbody></table>');
-        out.push(tbl.join(''));
-        i--;
-        continue;
-      }
-      var um = /^[-*] +(.*)$/.exec(ln);
-      var om = /^\d+\. +(.*)$/.exec(ln);
-      if (um) {
-        if (inOl) { out.push('</ol>'); inOl = false; }
-        if (!inUl) { out.push('<ul class="ff-ul">'); inUl = true; }
-        out.push('<li>' + um[1] + '</li>');
-      } else if (om) {
-        if (inUl) { out.push('</ul>'); inUl = false; }
-        if (!inOl) { out.push('<ol class="ff-ol">'); inOl = true; }
-        out.push('<li>' + om[1] + '</li>');
-      } else {
-        closeLists();
-        out.push(ln);
-      }
-    }
-    closeLists();
-    s = out.join('\n');
-
-    s = s.split(/\n{2,}/).map(function (block) {
-      var t = block.trim();
-      if (!t) return '';
-      if (/^<(h[1-6]|ul|ol|pre|blockquote|p|div|table)/i.test(t)) return t;
-      return '<p class="ff-p">' + t.replace(/\n/g, '<br>') + '</p>';
-    }).filter(Boolean).join('');
-
-    return s;
+  function renderAgentHtml(s) {
+    return String(s == null ? '' : s);
   }
 
   var conversationHistory = loadHistory();
@@ -629,7 +516,7 @@
     try {
       var reply = await askAgent(text);
       rmTyping();
-      addRow('bot', mdToHtml(shortenForDisplay(reply)));
+      addRow('bot', renderAgentHtml(reply));
       chips(['Ask another question']);
       recordTurn(text, reply);
     } catch (e) {
@@ -664,7 +551,7 @@
     addRow('bot', 'Welcome back to <strong>' + STORE_NAME + '</strong>! Continuing your conversation:');
     conversationHistory.forEach(function (turn) {
       if (turn && turn.user_prompt) addRow('user', turn.user_prompt);
-      if (turn && turn.agent_response) addRow('bot', mdToHtml(shortenForDisplay(turn.agent_response)));
+      if (turn && turn.agent_response) addRow('bot', renderAgentHtml(turn.agent_response));
     });
     chips(['Ask another question']);
   } else {
@@ -680,7 +567,7 @@
     addTyping();
     waitForRun(pending.poll_url, pending.user_prompt || '').then(function (output) {
       rmTyping();
-      addRow('bot', mdToHtml(shortenForDisplay(output)));
+      addRow('bot', renderAgentHtml(output));
       chips(['Ask another question']);
       recordTurn(pending.user_prompt || '', output);
     }).catch(function () {

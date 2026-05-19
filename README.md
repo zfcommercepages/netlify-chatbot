@@ -35,7 +35,7 @@ Self-contained Netlify site: **widget static files**, **`POST /api/chat`**, and 
 2. `chat.mjs` forwards the same body to `AGENT_WEBHOOK_URL`. The agent acknowledges immediately with `{ run_id, status:"pending", poll_url, stream_url, ... }`.
 3. `chat.mjs` returns `{ run_id, poll_url }` (HTTP 202) where `poll_url` points at the Netlify proxy: `/api/poll?p=<encoded agent path>`. The agent host's origin is never exposed to the browser.
 4. The widget stores the pending run in `localStorage` (key `ff_pending_run`) and polls `<CHAT_BACKEND_URL>/api/poll?p=...` **every 15 seconds**. Each call is forwarded server-side to the agent by `poll.mjs`, which validates that the target stays on `AGENT_WEBHOOK_URL`'s origin (SSRF guard).
-5. On completion the widget reads `output`, appends `{ user_prompt, agent_response }` to history, persists it, clears `ff_pending_run`, and renders the response in the chat (truncated to 200 words for display; the full text is kept in `context` for the next turn).
+5. On completion the widget reads `output`, appends `{ user_prompt, agent_response }` to history, persists it, clears `ff_pending_run`, and renders the response in the chat as HTML (the agent returns HTML directly; the full text is kept in `context` for the next turn).
 
 **Why the proxy?** The browser polls a Netlify URL (same origin as `/api/chat`), so no CORS headers are required on the agent host. This also keeps internal agent hosts (e.g. `http://10.93.9.49:8000`) hidden from end users.
 
