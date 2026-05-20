@@ -39,7 +39,6 @@
         '<div class="ff-logo">&#128249;</div>' +
         '<div class="ff-hinfo">' +
           '<div class="ff-hname">' + STORE_NAME + '</div>' +
-          '<div class="ff-hstat">Shopping Assistant</div>' +
         '</div>' +
         '<button class="ff-hcart" onclick="ffShowCart()">&#128722; <span id="ff-cbadge"></span></button>' +
         '<button class="ff-hclose" onclick="ffToggle()">&#10005;</button>' +
@@ -249,11 +248,11 @@
       walkCategories(cats, 0, flat);
       if (!flat.length) {
         addRow('bot', 'No categories are available from the store right now.');
-        chips(['List all collections', 'Browse all products', 'View cart']);
+        chips(['View cart']);
         return 'No categories available.';
       }
       addRow('bot', '<strong>Categories</strong> (tap a link to open on the store):<br><br>' + categoryListHtml(flat));
-      chips(['List all collections', 'Browse all products', 'View cart', 'Search in chat']);
+      chips(['View cart', 'Search in chat']);
       var names = flat.slice(0, 5).map(function (c) { return c.name; }).join(', ');
       return 'Showed ' + flat.length + ' categories: ' + names + (flat.length > 5 ? ', …' : '') + '.';
     } catch (e) {
@@ -271,7 +270,7 @@
       var cols = (d && d.payload && d.payload.collections) || [];
       if (!cols.length) {
         addRow('bot', 'No collections are published on the store right now.');
-        chips(['List all categories', 'Browse all products', 'View cart']);
+        chips(['View cart']);
         return 'No collections published.';
       }
       var lines = cols.map(function (c) {
@@ -280,7 +279,7 @@
         return '&#8226; <button type="button" class="ff-chip" style="margin:2px 0" onclick="ffLoadCollection(\'' + esc(id) + '\')">' + label + '</button>';
       }).join('<br>');
       addRow('bot', '<strong>Collections</strong> — tap a collection to load its products here:<br><br>' + lines);
-      chips(['List all categories', 'Browse all products', 'View cart']);
+      chips(['View cart']);
       var names = cols.slice(0, 5).map(function (c) { return c.name || 'Collection'; }).join(', ');
       return 'Showed ' + cols.length + ' collections: ' + names + (cols.length > 5 ? ', …' : '') + '.';
     } catch (e) {
@@ -300,13 +299,13 @@
       var prods = col.products || [];
       if (!prods.length) {
         addRow('bot', 'This collection has no products to show, or they are not loaded in this view. Open the store page for full results.');
-        chips(['List all categories', 'Browse all products', 'View cart']);
+        chips(['View cart']);
         return;
       }
       prods.forEach(function (p) { cache[p.product_id] = p; });
       addRow('bot', 'Collection <strong>' + esc(col.name || 'Selected') + '</strong> — tap a tile for details:');
       addTiles(prods.slice(0, LIST_PRODUCTS_CAP));
-      chips(['Ask about these products', 'List all collections', 'View cart']);
+      chips(['Ask about these products', 'View cart']);
     } catch (e) {
       rmTyping();
       addRow('bot', 'Could not load that collection. Try again from the list.');
@@ -320,14 +319,14 @@
       rmTyping();
       if (!prods.length) {
         addRow('bot', 'No products returned for a broad browse. Try searching for something specific.');
-        chips(['List all categories', 'List all collections', 'View cart']);
+        chips(['View cart']);
         return 'No products returned for a broad browse.';
       }
       var slice = prods.slice(0, LIST_PRODUCTS_CAP);
       slice.forEach(function (p) { cache[p.product_id] = p; });
       addRow('bot', 'Showing up to <strong>' + slice.length + '</strong> products from the catalog (first page). Tap a tile for details:');
       addTiles(slice);
-      chips(['Ask about these products', 'List all categories', 'List all collections', 'View cart']);
+      chips(['Ask about these products', 'View cart']);
       var names = slice.slice(0, 5).map(function (p) { return p.name; }).join(', ');
       return 'Showed ' + slice.length + ' products: ' + names + (slice.length > 5 ? ', …' : '') + '.';
     } catch (e) {
@@ -556,7 +555,7 @@
     chips(['Ask another question']);
   } else {
     addRow('bot', 'Welcome to <strong>' + STORE_NAME + '</strong>! Search for items, or say <strong>list all categories</strong>, <strong>list all collections</strong>, or <strong>browse all products</strong>.');
-    chips(['List all categories', 'List all collections', 'Browse all products', 'Office chair', 'Wall clock', 'Dining table']);
+    chips([]);
   }
 
   (function resumePendingRun() {
