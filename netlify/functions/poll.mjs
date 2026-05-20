@@ -71,14 +71,19 @@ export default async (request) => {
     });
   }
 
+  const authHeader = (process.env.AGENT_AUTH_HEADER || "Authorization").trim();
+  const authValue = (process.env.AGENT_AUTH_VALUE || "").trim();
+
   let ar;
   try {
+    const fwdHeaders = {
+      Accept: "application/json",
+      "ngrok-skip-browser-warning": "true",
+    };
+    if (authValue) fwdHeaders[authHeader] = authValue;
     ar = await fetch(target.href, {
       method: "GET",
-      headers: {
-        Accept: "application/json",
-        "ngrok-skip-browser-warning": "true",
-      },
+      headers: fwdHeaders,
     });
   } catch (e) {
     return new Response(

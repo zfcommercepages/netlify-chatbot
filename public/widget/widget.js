@@ -64,7 +64,7 @@
   var LIST_PRODUCTS_CAP = 30;
 
   var HISTORY_KEY = 'ff_history';
-  var PENDING_RUN_KEY = 'ff_pending_run';
+  var PENDING_RUN_KEY = 'ff_pending_run_v2';
   var MAX_HISTORY = 10;
   var POLL_INTERVAL_MS = 15000;
   var MAX_POLL_ERRORS = 5;

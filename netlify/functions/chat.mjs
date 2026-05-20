@@ -75,14 +75,19 @@ export default async (request) => {
   const context = sanitizeContext(body && body.context);
   const agentBody = { prompt, context };
 
+  const authHeader = (process.env.AGENT_AUTH_HEADER || "Authorization").trim();
+  const authValue = (process.env.AGENT_AUTH_VALUE || "").trim();
+
   let ar;
   try {
+    const fwdHeaders = {
+      "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "true",
+    };
+    if (authValue) fwdHeaders[authHeader] = authValue;
     ar = await fetch(agentUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      },
+      headers: fwdHeaders,
       body: JSON.stringify(agentBody),
     });
   } catch (e) {
