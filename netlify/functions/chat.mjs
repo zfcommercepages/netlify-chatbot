@@ -2,10 +2,6 @@
  * POST /api/chat — forwards { prompt, context } to AGENT_WEBHOOK_URL (async).
  * Returns { run_id, poll_url } so the widget can poll until status === "completed".
  */
-const MAX_PROMPT_CHARS = 12000;
-const MAX_HISTORY_ENTRIES = 5;
-const MAX_HISTORY_FIELD_CHARS = 12000;
-
 function cors(origin) {
   const allowed = (process.env.ALLOWED_ORIGINS || "")
     .split(",")
@@ -23,16 +19,10 @@ function cors(origin) {
 function sanitizeContext(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
-    .slice(-MAX_HISTORY_ENTRIES)
     .map((item) => {
       if (!item || typeof item !== "object") return null;
-      const user_prompt = String(item.user_prompt == null ? "" : item.user_prompt).slice(
-        0,
-        MAX_HISTORY_FIELD_CHARS
-      );
-      const agent_response = String(
-        item.agent_response == null ? "" : item.agent_response
-      ).slice(0, MAX_HISTORY_FIELD_CHARS);
+      const user_prompt = String(item.user_prompt == null ? "" : item.user_prompt);
+      const agent_response = String(item.agent_response == null ? "" : item.agent_response);
       if (!user_prompt && !agent_response) return null;
       return { user_prompt, agent_response };
     })
@@ -74,10 +64,7 @@ export default async (request) => {
     return new Response(JSON.stringify({ error: "invalid JSON" }), { status: 400, headers });
   }
 
-  const prompt = String(body && body.prompt != null ? body.prompt : "").slice(
-    0,
-    MAX_PROMPT_CHARS
-  );
+  const prompt = String(body && body.prompt != null ? body.prompt : "");
   if (!prompt.trim()) {
     return new Response(JSON.stringify({ error: "prompt must be a non-empty string" }), {
       status: 400,
@@ -128,32 +115,15 @@ export default async (request) => {
   }
 
   const runId = data && (data.run_id || data.id);
-  const pollUrlRaw = data && data.poll_url;
-  if (!runId || !pollUrlRaw) {
+  if (!runId) {
     return new Response(
-      JSON.stringify({ error: "Agent did not return run_id and poll_url", agent: data }),
+      JSON.stringify({ error: "Agent did not return run_id", agent: data }),
       { status: 502, headers }
     );
   }
 
-  let agentOrigin;
-  try {
-    const resolved = new URL(pollUrlRaw, agentUrl);
-    agentOrigin = new URL(agentUrl).origin;
-    if (resolved.origin !== agentOrigin) {
-      return new Response(
-        JSON.stringify({ error: "Agent poll_url origin does not match AGENT_WEBHOOK_URL" }),
-        { status: 502, headers }
-      );
-    }
-  } catch {
-    return new Response(
-      JSON.stringify({ error: "Could not resolve poll_url", poll_url: pollUrlRaw }),
-      { status: 502, headers }
-    );
-  }
-
-  const proxyPath = "/api/poll?p=" + encodeURIComponent(pollUrlRaw);
+  const pollPath = "/api/agents/builder/runs/detail/" + encodeURIComponent(runId);
+  const proxyPath = "/api/poll?p=" + encodeURIComponent(pollPath);
   return new Response(JSON.stringify({ run_id: runId, poll_url: proxyPath }), {
     status: 202,
     headers,
